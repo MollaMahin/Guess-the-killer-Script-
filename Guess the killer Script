@@ -9,9 +9,9 @@ end
 
 -- Create Window with Custom Purple RGB Theme
 local Window = Rayfield:CreateWindow({
-   Name = "Guess the Killer",
-   LoadingTitle = "Guess the Killer Script",
-   LoadingSubtitle = "Guess the Killer",
+   Name = "Guess the Killer | MMP",
+   LoadingTitle = "Guess the Killer",
+   LoadingSubtitle = "By MMP",
    ShowText = "MMP",
    ConfigurationSaving = {
       Enabled = false,
