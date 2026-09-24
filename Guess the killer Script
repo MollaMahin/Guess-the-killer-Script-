@@ -1,0 +1,365 @@
+-- Rayfield UI Loader
+local Success, Rayfield = pcall(function()
+    return loadstring(game:HttpGet("https://sirius.menu/rayfield"))()
+end)
+
+if not Success or not Rayfield then
+    Rayfield = loadstring(game:HttpGet("https://raw.githubusercontent.com/shlexware/Rayfield/main/source"))()
+end
+
+-- Create Window with Custom Purple RGB Theme
+local Window = Rayfield:CreateWindow({
+   Name = "Guess the Killer",
+   LoadingTitle = "Guess the Killer Script",
+   LoadingSubtitle = "Guess the Killer",
+   ShowText = "MMP",
+   ConfigurationSaving = {
+      Enabled = false,
+      FolderName = nil,
+      FileName = "MMP_GTK"
+   },
+   Discord = {
+      Enabled = false
+   },
+   KeySystem = false
+})
+
+Rayfield:Notify({
+   Title = "Notification",
+   Content = "Guess the Killer Script loaded!",
+   Duration = 3,
+   Image = 4483362458,
+})
+
+-- Create Tabs
+local MainTab = Window:CreateTab("Main", 4483362458)
+local LocalPlayerTab = Window:CreateTab("Local Player", 4483362458)
+
+-- State Variables
+local ESPEnabled = false
+local NameTagsEnabled = false
+local RevealKillerEnabled = false
+local NoclipEnabled = false
+
+local ESPHighlights = {}
+local ESPNameTags = {}
+local KillerTags = {}
+local IdentifiedKillers = {}
+
+----------------------------------------------------------------
+-- NOCLIP SYSTEM
+----------------------------------------------------------------
+
+local NoclipConnection
+local function toggleNoclip(state)
+    NoclipEnabled = state
+    if NoclipConnection then NoclipConnection:Disconnect() end
+
+    if NoclipEnabled then
+        NoclipConnection = game:GetService("RunService").Stepped:Connect(function()
+            local character = game.Players.LocalPlayer.Character
+            if character then
+                for _, part in ipairs(character:GetDescendants()) do
+                    if part:IsA("BasePart") and part.CanCollide then
+                        part.CanCollide = false
+                    end
+                end
+            end
+        end)
+    else
+        local character = game.Players.LocalPlayer.Character
+        if character then
+            for _, part in ipairs(character:GetDescendants()) do
+                if part:IsA("BasePart") then
+                    part.CanCollide = true
+                end
+            end
+        end
+    end
+end
+
+----------------------------------------------------------------
+-- KILLER TAG SYSTEM
+----------------------------------------------------------------
+
+local function applyKillerTag(player)
+    if not player or player == game.Players.LocalPlayer then return end
+    if not player.Character then return end
+    
+    local head = player.Character:FindFirstChild("Head")
+    if not head then return end
+
+    if KillerTags[player] then
+        if KillerTags[player].Parent ~= player.Character or KillerTags[player].Adornee ~= head then
+            KillerTags[player].Adornee = head
+            KillerTags[player].Parent = player.Character
+        end
+        return
+    end
+
+    local billboard = Instance.new("BillboardGui")
+    billboard.Name = "MMP_KillerTag"
+    billboard.Adornee = head
+    billboard.Size = UDim2.new(0, 250, 0, 50)
+    billboard.StudsOffset = Vector3.new(0, 4, 0)
+    billboard.AlwaysOnTop = true
+
+    local textLabel = Instance.new("TextLabel")
+    textLabel.Parent = billboard
+    textLabel.Size = UDim2.new(1, 0, 1, 0)
+    textLabel.BackgroundTransparency = 1
+    textLabel.Text = "THIS IS THE KILLER!"
+    textLabel.TextColor3 = Color3.fromRGB(255, 0, 0)
+    textLabel.TextStrokeTransparency = 0
+    textLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+    textLabel.TextSize = 20
+    textLabel.Font = Enum.Font.SourceSansBold
+
+    billboard.Parent = player.Character
+    KillerTags[player] = billboard
+end
+
+local function removeKillerTag(player)
+    if KillerTags[player] then
+        pcall(function() KillerTags[player]:Destroy() end)
+        KillerTags[player] = nil
+    end
+end
+
+local function isPlayerKiller(player)
+    if player == game.Players.LocalPlayer then return false end
+
+    if IdentifiedKillers[player] then
+        return true
+    end
+
+    local backpack = player:FindFirstChild("Backpack")
+    local character = player.Character
+    local knifeNames = {"knife", "blade", "murderer", "killerweapon", "slash", "kill", "weapon"}
+    
+    local function checkTools(container)
+        if not container then return false end
+        for _, item in ipairs(container:GetChildren()) do
+            if item:IsA("Tool") or item:IsA("Model") then
+                local lname = string.lower(item.Name)
+                for _, k in ipairs(knifeNames) do
+                    if string.find(lname, k) then
+                        return true
+                    end
+                end
+            end
+        end
+        return false
+    end
+
+    if checkTools(backpack) or checkTools(character) then
+        IdentifiedKillers[player] = true
+        return true
+    end
+
+    local role = player:GetAttribute("Role") or player:GetAttribute("role") or player:GetAttribute("Team")
+    if role and string.find(string.lower(tostring(role)), "killer") then
+        IdentifiedKillers[player] = true
+        return true
+    end
+
+    return false
+end
+
+----------------------------------------------------------------
+-- STANDARD ESP & NAMETAGS
+----------------------------------------------------------------
+
+local function applyHighlight(player)
+    if player == game.Players.LocalPlayer then return end
+    local function attach(character)
+        if not character then return end
+        if ESPHighlights[player] then
+            pcall(function() ESPHighlights[player]:Destroy() end)
+            ESPHighlights[player] = nil
+        end
+        local highlight = Instance.new("Highlight")
+        highlight.Name = "MMP_ESP_Highlight"
+        highlight.Adornee = character
+        highlight.FillColor = Color3.fromRGB(255, 50, 50)
+        highlight.FillTransparency = 0.5
+        highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
+        highlight.OutlineTransparency = 0
+        highlight.Parent = character
+        ESPHighlights[player] = highlight
+    end
+    if player.Character then attach(player.Character) end
+    player.CharacterAdded:Connect(function(character)
+        if ESPEnabled then
+            character:WaitForChild("HumanoidRootPart", 5)
+            attach(character)
+        end
+    end)
+end
+
+local function removeHighlight(player)
+    if ESPHighlights[player] then
+        pcall(function() ESPHighlights[player]:Destroy() end)
+        ESPHighlights[player] = nil
+    end
+end
+
+local function applyNameTag(player)
+    if player == game.Players.LocalPlayer then return end
+    local function attachTag(character)
+        if not character then return end
+        local head = character:WaitForChild("Head", 5)
+        if not head then return end
+        if ESPNameTags[player] then
+            pcall(function() ESPNameTags[player]:Destroy() end)
+            ESPNameTags[player] = nil
+        end
+        local billboard = Instance.new("BillboardGui")
+        billboard.Name = "MMP_NameTag"
+        billboard.Adornee = head
+        billboard.Size = UDim2.new(0, 200, 0, 50)
+        billboard.StudsOffset = Vector3.new(0, 2.5, 0)
+        billboard.AlwaysOnTop = true
+
+        local textLabel = Instance.new("TextLabel")
+        textLabel.Parent = billboard
+        textLabel.Size = UDim2.new(1, 0, 1, 0)
+        textLabel.BackgroundTransparency = 1
+        textLabel.Text = player.DisplayName .. " (@" .. player.Name .. ")"
+        textLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+        textLabel.TextStrokeTransparency = 0
+        textLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+        textLabel.TextSize = 14
+        textLabel.Font = Enum.Font.SourceSansBold
+
+        billboard.Parent = character
+        ESPNameTags[player] = billboard
+    end
+    if player.Character then attachTag(player.Character) end
+    player.CharacterAdded:Connect(function(character)
+        if NameTagsEnabled then attachTag(character) end
+    end)
+end
+
+local function removeNameTag(player)
+    if ESPNameTags[player] then
+        pcall(function() ESPNameTags[player]:Destroy() end)
+        ESPNameTags[player] = nil
+    end
+end
+
+----------------------------------------------------------------
+-- UI STRUCTURE
+----------------------------------------------------------------
+
+-- MAIN TAB
+local ESPSection = MainTab:CreateSection("ESP Scripts")
+
+local ESPToggle = MainTab:CreateToggle({
+   Name = "ESP Players",
+   CurrentValue = false,
+   Flag = "ESP_Toggle_Flag",
+   Callback = function(Value)
+      ESPEnabled = Value
+      if ESPEnabled then
+         for _, player in ipairs(game.Players:GetPlayers()) do applyHighlight(player) end
+      else
+         for player, _ in pairs(ESPHighlights) do removeHighlight(player) end
+      end
+   end,
+})
+
+local NameTagsToggle = MainTab:CreateToggle({
+   Name = "ESP Name tags",
+   CurrentValue = false,
+   Flag = "NameTags_Toggle_Flag",
+   Callback = function(Value)
+      NameTagsEnabled = Value
+      if NameTagsEnabled then
+         for _, player in ipairs(game.Players:GetPlayers()) do applyNameTag(player) end
+      else
+         for player, _ in pairs(ESPNameTags) do removeNameTag(player) end
+      end
+   end,
+})
+
+local RevealsSection = MainTab:CreateSection("Reveals")
+
+local RevealKillerToggle = MainTab:CreateToggle({
+   Name = "Reveal the Killer",
+   CurrentValue = false,
+   Flag = "RevealKiller_Toggle_Flag",
+   Callback = function(Value)
+      RevealKillerEnabled = Value
+      
+      if RevealKillerEnabled then
+         task.spawn(function()
+            while RevealKillerEnabled do
+               for _, player in ipairs(game.Players:GetPlayers()) do
+                  if player ~= game.Players.LocalPlayer then
+                     if isPlayerKiller(player) then
+                        applyKillerTag(player)
+                     else
+                        removeKillerTag(player)
+                     end
+                  end
+               end
+               task.wait(0.2)
+            end
+         end)
+      else
+         IdentifiedKillers = {}
+         for player, _ in pairs(KillerTags) do
+            removeKillerTag(player)
+         end
+      end
+   end,
+})
+
+local CreditsSection = MainTab:CreateSection("Credits")
+local CreditsLabel = MainTab:CreateLabel("Script made by MMP")
+
+-- LOCAL PLAYER TAB
+local MovementSection = LocalPlayerTab:CreateSection("Movement")
+
+local NoclipToggle = LocalPlayerTab:CreateToggle({
+   Name = "Noclip",
+   CurrentValue = false,
+   Flag = "Noclip_Toggle_Flag",
+   Callback = function(Value)
+      toggleNoclip(Value)
+   end,
+})
+
+----------------------------------------------------------------
+-- CLEANUP LISTENERS & ROUND RESET
+----------------------------------------------------------------
+
+game.Players.PlayerRemoving:Connect(function(player)
+    removeHighlight(player)
+    removeNameTag(player)
+    removeKillerTag(player)
+    IdentifiedKillers[player] = nil
+end)
+
+game.Players.LocalPlayer.CharacterAdded:Connect(function()
+    IdentifiedKillers = {}
+    for player, _ in pairs(KillerTags) do
+        removeKillerTag(player)
+    end
+end)
+
+for _, player in ipairs(game.Players:GetPlayers()) do
+    player.CharacterAdded:Connect(function()
+        IdentifiedKillers[player] = nil
+        removeKillerTag(player)
+    end)
+end
+
+game.Players.PlayerAdded:Connect(function(player)
+    player.CharacterAdded:Connect(function()
+        IdentifiedKillers[player] = nil
+        removeKillerTag(player)
+    end)
+end)
+
